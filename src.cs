@@ -14,11 +14,13 @@ public class EzClient : MonoBehaviour {
     public delegate void JoinPlayerCallback(JoinPlayer packet);
     public delegate void LeavePlayerCallback(LeavePlayer packet);
     public delegate void CustomPacketCallback(BroadcastPacket packet);
+    public delegate void ModifyWorldPropertyCallback(ModifyWorldProperty packet);
     #endregion
 
     public JoinPlayerCallback onJoinPlayer;
     public LeavePlayerCallback onLeavePlayer;
     public CustomPacketCallback onCustomPacket;
+    public ModifyWorldPropertyCallback onModifyWorldProperty;
 
     public EzPlayer player;
     public List<EzPlayer> players;
@@ -36,13 +38,13 @@ public class EzClient : MonoBehaviour {
 
         ezclient.host = host;
         ezclient.worldProperty = new Dictionary<string, object>();
-        ezclient.players = new List<EzPlayer>();
         ezclient.player = new EzPlayer()
         {
             UserId = userId,
             Property = property
         };
-
+        ezclient.players = new List<EzPlayer>() { ezclient.player };
+        
         return ezclient;
     }
 
@@ -104,7 +106,10 @@ public class EzClient : MonoBehaviour {
     private void ProcessModifyWorldProperty(ModifyWorldProperty packet)
     {
         for (var pair in packet.Property)
-            worldProperty[pair.Key] = pair.Value;   
+            worldProperty[pair.Key] = pair.Value; 
+
+        if (onModifyWorldProperty != null)
+            onModifyWorldProperty.Invoke(packet);  
     }
     private void ProcessJoinPlayer(JoinPlayer packet)
     {
@@ -160,7 +165,7 @@ public class EzClient : MonoBehaviour {
     {
         SetWorldProperty(new Dictionary<string, object>() {
             {key, value}
-        })
+        });
     }
     /// <summary>
     /// 연결을 끊는다.
