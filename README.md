@@ -6,6 +6,7 @@ EzClient.Unity
 
 
 
+
 서버에 연결하기
 ----
 ```cs
@@ -83,6 +84,9 @@ client.SetPlayerProperty(new Dictionary<string, object>() {
     {"nickname", "rinirininini"}
 });
 ```
+* 지정한 KEY는 VALUE로 덮어쓰기 됩니다.
+* 지정하지 않은 KEY는 변동 사항이 없습니다.
+
 
 월드 데이터
 ----
@@ -99,3 +103,5 @@ client.SetWorldProperty(new Dictionary<string, object>() {
     {"map_id", 11}
 });
 ```
+* 지정한 KEY는 VALUE로 덮어쓰기 됩니다.
+* 지정하지 않은 KEY는 변동 사항이 없습니다.
