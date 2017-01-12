@@ -86,6 +86,8 @@ public class EzClient : MonoBehaviour {
 
         if (packet is WorldInfo)
             ProcessWorldInfo((WorldInfo)packet);
+        else if (packet is ModifyWorldProperty)
+            ProcessModifyWorldProperty((ModifyWorldProperty)packet);
         else if (packet is JoinPlayer)
             ProcessJoinPlayer((JoinPlayer)packet);
         else if (packet is LeavePlayer)
@@ -98,6 +100,11 @@ public class EzClient : MonoBehaviour {
     {
         players = new List<EzPlayer>(packet.Players);
         worldProperty = packet.Property;
+    }
+    private void ProcessModifyWorldProperty(ModifyWorldProperty packet)
+    {
+        for (var pair in packet.Property)
+            worldProperty[pair.Key] = pair.Value;   
     }
     private void ProcessJoinPlayer(JoinPlayer packet)
     {
@@ -148,6 +155,12 @@ public class EzClient : MonoBehaviour {
         {
             Property = property
         });
+    }
+    public void SetWorldProperty(string key, object value) 
+    {
+        SetWorldProperty(new Dictionary<string, object>() {
+            {key, value}
+        })
     }
     /// <summary>
     /// 연결을 끊는다.
