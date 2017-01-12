@@ -74,3 +74,28 @@ client.onCustomPacket += (BroadcastPacket packet) =>
         log += "[" + packet.Sender.Property["nickname"] + "] " + packet.Data["message"] + "\r\n";
 };
 ```
+
+
+내 정보 수정하기
+----
+```cs
+client.SetPlayerProperty(new Dictionary<string, object>() {
+    {"nickname", "rinirininini"}
+});
+```
+
+월드 데이터
+----
+월드 데이터는 서버 인스턴스 전체에 공유되는 데이터입니다.<br>
+
+__월드 데이터에 접근하기__
+```cs
+var mapId = (int)client.worldProperty["map_id"];
+```
+
+__월드 데이터 수정하기__
+```cs
+client.SetWorldProperty(new Dictionary<string, object>() {
+    {"map_id", 11}
+});
+```
