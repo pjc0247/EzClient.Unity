@@ -9,7 +9,8 @@ using UnityEngine;
 using GSF.Packet;
 using GSF.Ez.Packet;
 
-public class EzClient : MonoBehaviour {
+public class EzClient : MonoBehaviour
+{
     #region DELEGATE
     public delegate void JoinPlayerCallback(JoinPlayer packet);
     public delegate void LeavePlayerCallback(LeavePlayer packet);
@@ -25,6 +26,8 @@ public class EzClient : MonoBehaviour {
     public EzPlayer player;
     public List<EzPlayer> players;
     public Dictionary<string, object> worldProperty;
+
+    private List<Action> tasks;
 
     private string host;
     private WebSocket ws;
@@ -44,11 +47,14 @@ public class EzClient : MonoBehaviour {
             Property = property
         };
         ezclient.players = new List<EzPlayer>() { ezclient.player };
-        
+
+        ezclient.tasks = new List<Action>();
+
         return ezclient;
     }
 
-	void Start () {
+    void Start()
+    {
         DontDestroyOnLoad(gameObject);
 
         ws = new WebSocket(host);
@@ -58,6 +64,19 @@ public class EzClient : MonoBehaviour {
         ws.OnMessage += Ws_OnMessage;
 
         ws.Connect();
+    }
+    void Update()
+    {
+        List<Action> tasksCopy = null;
+
+        lock (tasks)
+        {
+            tasksCopy = new List<Action>(tasks);
+            tasks.Clear();
+        }
+
+        foreach (var task in tasksCopy)
+            task.Invoke();
     }
 
     private void Ws_OnOpen(object sender, EventArgs e)
@@ -98,37 +117,43 @@ public class EzClient : MonoBehaviour {
             ProcessBroadcastPacket((BroadcastPacket)packet);
     }
 
+    private void AddTask(Action action)
+    {
+        lock (tasks)
+            tasks.Add(action);
+    }
     private void ProcessWorldInfo(WorldInfo packet)
     {
         players = new List<EzPlayer>(packet.Players);
+        players.Add(player);
         worldProperty = packet.Property;
     }
     private void ProcessModifyWorldProperty(ModifyWorldProperty packet)
     {
-        for (var pair in packet.Property)
-            worldProperty[pair.Key] = pair.Value; 
+        foreach (var pair in packet.Property)
+            worldProperty[pair.Key] = pair.Value;
 
         if (onModifyWorldProperty != null)
-            onModifyWorldProperty.Invoke(packet);  
+            AddTask(() => onModifyWorldProperty.Invoke(packet));
     }
     private void ProcessJoinPlayer(JoinPlayer packet)
     {
         players.Add(packet.Player);
 
         if (onJoinPlayer != null)
-            onJoinPlayer.Invoke(packet);
+            AddTask(() => onJoinPlayer.Invoke(packet));
     }
     private void ProcessLeavePlayer(LeavePlayer packet)
     {
         players.Remove(packet.Player);
 
         if (onLeavePlayer != null)
-            onLeavePlayer.Invoke(packet);
+            AddTask(() => onLeavePlayer.Invoke(packet));
     }
     private void ProcessBroadcastPacket(BroadcastPacket packet)
     {
         if (onCustomPacket != null)
-            onCustomPacket.Invoke(packet);
+            AddTask(() => onCustomPacket.Invoke(packet));
     }
 
     private void Send(PacketBase packet)
@@ -161,7 +186,7 @@ public class EzClient : MonoBehaviour {
             Property = property
         });
     }
-    public void SetWorldProperty(string key, object value) 
+    public void SetWorldProperty(string key, object value)
     {
         SetWorldProperty(new Dictionary<string, object>() {
             {key, value}
