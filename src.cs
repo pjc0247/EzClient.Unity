@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Collections.Generic;
 
 using WebSocketSharp;
@@ -12,27 +13,42 @@ using GSF.Ez.Packet;
 public class EzClient : MonoBehaviour
 {
     #region DELEGATE
+    public delegate void WorldInfoCallback(WorldInfo packet);
     public delegate void JoinPlayerCallback(JoinPlayer packet);
     public delegate void LeavePlayerCallback(LeavePlayer packet);
     public delegate void CustomPacketCallback(BroadcastPacket packet);
+    public delegate void ModifyPlayerPropertyCallback(ModifyPlayerProperty packet);
     public delegate void ModifyWorldPropertyCallback(ModifyWorldProperty packet);
+    public delegate void ModifyOptionalWorldPropertyCallback(ModifyOptionalWorldProperty packet);
+
+    public delegate void OptionalWorldPropertyCallback(OptionalWorldProperty packet);
     #endregion
 
+    public WorldInfoCallback onWorldInfo;
     public JoinPlayerCallback onJoinPlayer;
     public LeavePlayerCallback onLeavePlayer;
     public CustomPacketCallback onCustomPacket;
+    public ModifyPlayerPropertyCallback onModifyPlayerProperty;
     public ModifyWorldPropertyCallback onModifyWorldProperty;
+    public ModifyOptionalWorldPropertyCallback onModifyOptionalWorldProperty;
 
     public EzPlayer player;
     public List<EzPlayer> players;
     public Dictionary<string, object> worldProperty;
+    public Dictionary<string, object> optionalWorldProperty;
 
     private List<Action> tasks;
 
     private string host;
     private WebSocket ws;
 
-    public static EzClient Connect(string host, int userId, Dictionary<string, object> property)
+    private int nextPacketId = 0;
+    private Dictionary<long, Action<PacketBase>> responseCallbacks;
+
+    // jwvg0425
+    public static EzClient Instance;
+
+    public static EzClient Connect(string host, string playerId, Dictionary<string, object> property)
     {
         var gobj = new GameObject("EzClientObj");
         var ezclient = gobj.AddComponent<EzClient>();
@@ -41,14 +57,18 @@ public class EzClient : MonoBehaviour
 
         ezclient.host = host;
         ezclient.worldProperty = new Dictionary<string, object>();
+        ezclient.optionalWorldProperty = new Dictionary<string, object>();
         ezclient.player = new EzPlayer()
         {
-            UserId = userId,
+            PlayerId = playerId,
             Property = property
         };
         ezclient.players = new List<EzPlayer>() { ezclient.player };
-
+        ezclient.responseCallbacks = new Dictionary<long, Action<PacketBase>>();
         ezclient.tasks = new List<Action>();
+
+        // jwvg0425
+        Instance = ezclient;
 
         return ezclient;
     }
@@ -77,6 +97,10 @@ public class EzClient : MonoBehaviour
 
         foreach (var task in tasksCopy)
             task.Invoke();
+    }
+    void OnDisable()
+    {
+        Disconnect();
     }
 
     private void Ws_OnOpen(object sender, EventArgs e)
@@ -107,14 +131,21 @@ public class EzClient : MonoBehaviour
 
         if (packet is WorldInfo)
             ProcessWorldInfo((WorldInfo)packet);
+        else if (packet is ModifyPlayerProperty)
+            ProcessModifyPlayerProperty((ModifyPlayerProperty)packet);
         else if (packet is ModifyWorldProperty)
             ProcessModifyWorldProperty((ModifyWorldProperty)packet);
+        else if (packet is ModifyOptionalWorldProperty)
+            ProcessModifyOptionalWorldProperty((ModifyOptionalWorldProperty)packet);
         else if (packet is JoinPlayer)
             ProcessJoinPlayer((JoinPlayer)packet);
         else if (packet is LeavePlayer)
             ProcessLeavePlayer((LeavePlayer)packet);
         else if (packet is BroadcastPacket)
             ProcessBroadcastPacket((BroadcastPacket)packet);
+
+        else if (packet is OptionalWorldProperty)
+            ProcessOptionalWorldProperty((OptionalWorldProperty)packet);
     }
 
     private void AddTask(Action action)
@@ -122,11 +153,29 @@ public class EzClient : MonoBehaviour
         lock (tasks)
             tasks.Add(action);
     }
+
+    #region PROCESS_PACKET
     private void ProcessWorldInfo(WorldInfo packet)
     {
-        players = new List<EzPlayer>(packet.Players);
+        players = new List<EzPlayer>(packet.OtherPlayers);
         players.Add(player);
+        player = packet.Player;
         worldProperty = packet.Property;
+
+        if (onWorldInfo != null)
+            AddTask(() => onWorldInfo.Invoke(packet));
+    }
+    private void ProcessModifyPlayerProperty(ModifyPlayerProperty packet)
+    {
+        EzPlayer player = null;
+        lock (players)
+            player = players.Find(x => x.PlayerId == packet.Player.PlayerId);
+
+        foreach (var pair in packet.Property)
+            player.Property[pair.Key] = pair.Value;
+
+        if (onModifyPlayerProperty != null)
+            AddTask(() => onModifyPlayerProperty.Invoke(packet));
     }
     private void ProcessModifyWorldProperty(ModifyWorldProperty packet)
     {
@@ -136,16 +185,26 @@ public class EzClient : MonoBehaviour
         if (onModifyWorldProperty != null)
             AddTask(() => onModifyWorldProperty.Invoke(packet));
     }
+    private void ProcessModifyOptionalWorldProperty(ModifyOptionalWorldProperty packet)
+    {
+        foreach (var pair in packet.Property)
+            optionalWorldProperty[pair.Key] = pair.Value;
+
+        if (onModifyOptionalWorldProperty != null)
+            AddTask(() => onModifyOptionalWorldProperty.Invoke(packet));
+    }
     private void ProcessJoinPlayer(JoinPlayer packet)
     {
-        players.Add(packet.Player);
+        lock (players)
+            players.Add(packet.Player);
 
         if (onJoinPlayer != null)
             AddTask(() => onJoinPlayer.Invoke(packet));
     }
     private void ProcessLeavePlayer(LeavePlayer packet)
     {
-        players.Remove(packet.Player);
+        lock (players)
+            players.Remove(packet.Player);
 
         if (onLeavePlayer != null)
             AddTask(() => onLeavePlayer.Invoke(packet));
@@ -155,6 +214,21 @@ public class EzClient : MonoBehaviour
         if (onCustomPacket != null)
             AddTask(() => onCustomPacket.Invoke(packet));
     }
+    private void ProcessOptionalWorldProperty(OptionalWorldProperty packet)
+    {
+        lock (responseCallbacks)
+        {
+            if (responseCallbacks.ContainsKey(packet.PacketId) == false)
+            {
+                Debug.LogWarning("UnknownPacket : " + packet.PacketId);
+                return;
+            }
+
+            responseCallbacks[packet.PacketId].Invoke(packet);
+            responseCallbacks.Remove(packet.PacketId);
+        }
+    }
+    #endregion
 
     private void Send(PacketBase packet)
     {
@@ -179,6 +253,13 @@ public class EzClient : MonoBehaviour
             Property = property
         });
     }
+    public void SetPlayerProperty(string key, object value)
+    {
+        SetPlayerProperty(new Dictionary<string, object>()
+        {
+            {key, value}
+        });
+    }
     public void SetWorldProperty(Dictionary<string, object> property)
     {
         Send(new ModifyWorldProperty()
@@ -192,11 +273,44 @@ public class EzClient : MonoBehaviour
             {key, value}
         });
     }
+
+    public void SetOptionalWorldProperty(Dictionary<string, object> property)
+    {
+        Send(new ModifyOptionalWorldProperty()
+        {
+            Property = property
+        });
+    }
+    public void SetOptionalWorldProperty(string key, object value)
+    {
+        SetOptionalWorldProperty(new Dictionary<string, object>()
+        {
+            {key, value}
+        });
+    }
+    public void RequestOptionalWorldProperty(string[] keys, OptionalWorldPropertyCallback callback)
+    {
+        int packetId = Interlocked.Increment(ref nextPacketId);
+
+        lock (responseCallbacks)
+            responseCallbacks[packetId] = (p) => callback.Invoke((OptionalWorldProperty)p);
+
+        Send(new RequestOptionalWorldProperty()
+        {
+            PacketId = packetId,
+            Keys = keys
+        });
+    }
+
     /// <summary>
     /// 연결을 끊는다.
     /// </summary>
     public void Disconnect()
     {
+        if (ws.IsAlive == false)
+            return;
+
         ws.Close();
+        Destroy(gameObject);
     }
 }
