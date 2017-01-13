@@ -13,10 +13,11 @@ __GSF.Ez__ implementation for Unity.<br>
 ----
 ```cs
 // 클라이언트 식별값
-var uniqId = (new System.Random()).Next() + 1000;
+//    닉네임을 사용해도 무관
+var uniqId = "pjc0247";
 
 client = EzClient.Connect(
-    "ws://localhost:9916/echo?version=1.0.0&userType=guest&userId=1",
+    "ws://localhost:9916",
     uniqId,
     new Dictionary<string, object>() {
         {"class", "oven-breaker"}
