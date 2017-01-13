@@ -37,7 +37,7 @@ public class EzClient : MonoBehaviour
     public Dictionary<string, object> worldProperty;
     public Dictionary<string, object> optionalWorldProperty;
 
-    private List<Action> tasks;
+    private List<PacketBase> packetQ;
 
     private string host;
     private WebSocket ws;
@@ -65,7 +65,7 @@ public class EzClient : MonoBehaviour
         };
         ezclient.players = new List<EzPlayer>() { ezclient.player };
         ezclient.responseCallbacks = new Dictionary<long, Action<PacketBase>>();
-        ezclient.tasks = new List<Action>();
+        ezclient.packetQ = new List<PacketBase>();
 
         // jwvg0425
         Instance = ezclient;
@@ -87,16 +87,16 @@ public class EzClient : MonoBehaviour
     }
     void Update()
     {
-        List<Action> tasksCopy = null;
+        List<PacketBase> qCopy = null;
 
-        lock (tasks)
+        lock (packetQ)
         {
-            tasksCopy = new List<Action>(tasks);
-            tasks.Clear();
+            qCopy = new List<PacketBase>(packetQ);
+            packetQ.Clear();
         }
 
-        foreach (var task in tasksCopy)
-            task.Invoke();
+        foreach (var packet in qCopy)
+            ProcessPacket(packet);
     }
     void OnDisable()
     {
@@ -129,6 +129,21 @@ public class EzClient : MonoBehaviour
 
         var packet = PacketSerializer.Deserialize(e.RawData);
 
+        lock (packetQ)
+            packetQ.Add(packet);
+    }
+
+    // fixme
+    private void AddTask(Action action)
+    {
+        //lock (tasks)
+        //    tasks.Add(action);
+        action.Invoke();
+    }
+
+    #region PROCESS_PACKET
+    private void ProcessPacket(PacketBase packet)
+    {
         if (packet is WorldInfo)
             ProcessWorldInfo((WorldInfo)packet);
         else if (packet is ModifyPlayerProperty)
@@ -147,14 +162,6 @@ public class EzClient : MonoBehaviour
         else if (packet is OptionalWorldProperty)
             ProcessOptionalWorldProperty((OptionalWorldProperty)packet);
     }
-
-    private void AddTask(Action action)
-    {
-        lock (tasks)
-            tasks.Add(action);
-    }
-
-    #region PROCESS_PACKET
     private void ProcessWorldInfo(WorldInfo packet)
     {
         players = new List<EzPlayer>(packet.OtherPlayers);
