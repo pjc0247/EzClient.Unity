@@ -24,6 +24,14 @@ public class EzClient : MonoBehaviour
     public delegate void OptionalWorldPropertyCallback(OptionalWorldProperty packet);
     #endregion
 
+    public bool isAlive
+    {
+        get
+        {
+            return ws.IsAlive;
+        }
+    }
+
     public WorldInfoCallback onWorldInfo;
     public JoinPlayerCallback onJoinPlayer;
     public LeavePlayerCallback onLeavePlayer;
@@ -48,6 +56,12 @@ public class EzClient : MonoBehaviour
     // jwvg0425
     public static EzClient Instance;
 
+    /// <summary>
+    /// </summary>
+    /// <param name="host">서버 주소</param>
+    /// <param name="playerId">유저 식별값 (주로 닉네임)</param>
+    /// <param name="property">로그인과 함께 서버에 보낼 개인 데이터</param>
+    /// <returns></returns>
     public static EzClient Connect(string host, string playerId, Dictionary<string, object> property)
     {
         var gobj = new GameObject("EzClientObj");
@@ -307,6 +321,10 @@ public class EzClient : MonoBehaviour
             PacketId = packetId,
             Keys = keys
         });
+    }
+    public void RequestOptionalWorldProperty(string key, OptionalWorldPropertyCallback callback)
+    {
+        RequestOptionalWorldProperty(new string[] { key }, callback);
     }
 
     /// <summary>
