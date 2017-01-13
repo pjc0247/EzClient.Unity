@@ -10,6 +10,23 @@ using UnityEngine;
 using GSF.Packet;
 using GSF.Ez.Packet;
 
+using Newtonsoft.Json;
+
+public static class EzSerializer
+{
+    public static string ToEzObject(this object obj)
+    {
+        return JsonConvert.SerializeObject(obj);
+    }
+    public static T ToGameObject<T>(this object json)
+    {
+        if (!(json is string))
+            throw new ArgumentException("not an ezobject");
+            
+        return JsonConvert.DeserializeObject<T>((string)json);
+    }
+}
+
 public class EzClient : MonoBehaviour
 {
     #region DELEGATE
