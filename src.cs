@@ -1,191 +1,362 @@
-using UnityEngine;
-
-using System.Linq;
+using System;
+using System.Threading;
 using System.Collections.Generic;
 
+using WebSocketSharp;
+using WebSocketSharp.Net;
+
+using UnityEngine;
+
+using GSF.Packet;
 using GSF.Ez.Packet;
 
-public class TestScript : MonoBehaviour {
-    class ClientData
+using Newtonsoft.Json;
+
+public static class EzSerializer
+{
+    public static string ToEzObject(this object obj)
     {
-        public EzClient ezClient;
-        public string log;
-
-        #region UI_DATA
-        public string chatMessage = "";
-
-        public string playerPropertyKey = "KEY";
-        public string playerPropertyValue = "VALUE";
-
-        public string worldPropertyKey = "KEY";
-        public string worldPropertyValue = "Value";
-
-        public string optionalWorldPropertyKey = "KEY";
-        public string optionalWorldPropertyValue = "Value";
-
-        public string requestOptionalWorldPropertyKey = "KEY";
-        #endregion
+        return JsonConvert.SerializeObject(obj);
     }
-
-    class Foo
+    public static T ToGameObject<T>(this object json)
     {
-        public string Name;
-        public long Level;
+        if (!(json is string))
+            throw new ArgumentException("not an ezobject");
+            
+        return JsonConvert.DeserializeObject<T>((string)json);
     }
+}
 
-    private List<ClientData> clients;
+public class EzClient : MonoBehaviour
+{
+    #region DELEGATE
+    public delegate void WorldInfoCallback(WorldInfo packet);
+    public delegate void JoinPlayerCallback(JoinPlayer packet);
+    public delegate void LeavePlayerCallback(LeavePlayer packet);
+    public delegate void CustomPacketCallback(BroadcastPacket packet);
+    public delegate void ModifyPlayerPropertyCallback(ModifyPlayerProperty packet);
+    public delegate void ModifyWorldPropertyCallback(ModifyWorldProperty packet);
+    public delegate void ModifyOptionalWorldPropertyCallback(ModifyOptionalWorldProperty packet);
 
-	void Start () {
-        Debug.Log("START");
+    public delegate void OptionalWorldPropertyCallback(OptionalWorldProperty packet);
+    #endregion
 
-        clients = new List<ClientData>();
-
-        var f = new Foo()
+    public bool isAlive
+    {
+        get
         {
-            Name = "asdf"
+            return ws.IsAlive;
+        }
+    }
+
+    public WorldInfoCallback onWorldInfo;
+    public JoinPlayerCallback onJoinPlayer;
+    public LeavePlayerCallback onLeavePlayer;
+    public CustomPacketCallback onCustomPacket;
+    public ModifyPlayerPropertyCallback onModifyPlayerProperty;
+    public ModifyWorldPropertyCallback onModifyWorldProperty;
+    public ModifyOptionalWorldPropertyCallback onModifyOptionalWorldProperty;
+
+    public EzPlayer player;
+    public List<EzPlayer> players;
+    public Dictionary<string, object> worldProperty;
+    public Dictionary<string, object> optionalWorldProperty;
+
+    private List<PacketBase> packetQ;
+
+    private string host;
+    private WebSocket ws;
+
+    private int nextPacketId = 0;
+    private Dictionary<long, Action<PacketBase>> responseCallbacks;
+
+    // jwvg0425
+    public static EzClient Instance;
+
+    /// <summary>
+    /// </summary>
+    /// <param name="host">서버 주소</param>
+    /// <param name="playerId">유저 식별값 (주로 닉네임)</param>
+    /// <param name="property">로그인과 함께 서버에 보낼 개인 데이터</param>
+    /// <returns></returns>
+    public static EzClient Connect(string host, string playerId, Dictionary<string, object> property)
+    {
+        if (host.EndsWith("/") == false)
+            host = host + "/";
+        host += "ez?version=1.0.0&userType=guest&userId=1";
+
+        var gobj = new GameObject("EzClientObj");
+        var ezclient = gobj.AddComponent<EzClient>();
+
+        PacketSerializer.Protocol = new GSF.Packet.Json.JsonProtocol();
+
+        ezclient.host = host;
+        ezclient.worldProperty = new Dictionary<string, object>();
+        ezclient.optionalWorldProperty = new Dictionary<string, object>();
+        ezclient.player = new EzPlayer()
+        {
+            PlayerId = playerId,
+            Property = property
         };
+        ezclient.players = new List<EzPlayer>() { ezclient.player };
+        ezclient.responseCallbacks = new Dictionary<long, Action<PacketBase>>();
+        ezclient.packetQ = new List<PacketBase>();
 
-        Debug.Log(f.ToEzObject());
-        Debug.Log(f.ToEzObject().ToGameObject<Foo>().Name);
-	}
+        // jwvg0425
+        Instance = ezclient;
 
-    string nickname = "jwvg";
-    void OnGUI()
+        return ezclient;
+    }
+
+    void Start()
     {
-        GUILayout.BeginHorizontal();
-        GUILayout.Label("Nickname");
-        GUILayout.Space(10);
-        nickname = GUILayout.TextField(nickname, GUILayout.Width(100));
-        GUILayout.Space(10);
-        if (GUILayout.Button("CreateNewClient"))
+        DontDestroyOnLoad(gameObject);
+
+        ws = new WebSocket(host);
+        ws.OnOpen += Ws_OnOpen;
+        ws.OnError += Ws_OnError;
+        ws.OnClose += Ws_OnClose;
+        ws.OnMessage += Ws_OnMessage;
+
+        ws.Connect();
+    }
+    void Update()
+    {
+        List<PacketBase> qCopy = null;
+
+        lock (packetQ)
         {
-            var client = new ClientData()
-            {
-                ezClient = EzClient.Connect("ws://localhost:9916",
-                    nickname,
-                    new Dictionary<string, object>() {
-                    }),
-                log = ""
-            };
-
-            client.ezClient.onWorldInfo += (WorldInfo packet) =>
-            {
-                client.log += "OnWorldInfo : " + Newtonsoft.Json.JsonConvert.SerializeObject(packet.Player.Property) + "\r\n";
-            };
-            client.ezClient.onJoinPlayer += (JoinPlayer packet) =>
-            {
-                client.log += "OnJoin : " + packet.Player.PlayerId + "\r\n";
-            };
-            client.ezClient.onLeavePlayer += (LeavePlayer packet) =>
-            {
-                client.log += "OnLeave : " + packet.Player.PlayerId + "\r\n";
-            };
-            client.ezClient.onModifyPlayerProperty += (ModifyPlayerProperty packet) =>
-            {
-                client.log += "OnModifyPlayerPropeperty : " + packet.Player.PlayerId + " / " + Newtonsoft.Json.JsonConvert.SerializeObject(packet.Property) + "\r\n";
-            };
-            client.ezClient.onCustomPacket += (BroadcastPacket packet) =>
-            {
-                // 커스텀 패킷을 받으면, Type에 따라 분류 처리해야 함
-                if (packet.Type == PacketType.Chat)
-                    client.log += "[" + packet.Sender.PlayerId + "] " + packet.Data["message"] + "\r\n";
-                else if (packet.Type == PacketType.Move)
-                {
-                    client.log += "OnMove\r\n";
-                }
-            };
-
-            clients.Add(client);
-
-            nickname = "rini" + (new System.Random()).Next(9000) + 1000;
+            qCopy = new List<PacketBase>(packetQ);
+            packetQ.Clear();
         }
-        GUILayout.EndHorizontal();
 
-        var offset = 0;
-        foreach (var clientData in clients)
+        foreach (var packet in qCopy)
+            ProcessPacket(packet);
+    }
+    void OnDisable()
+    {
+        Disconnect();
+    }
+
+    private void Ws_OnOpen(object sender, EventArgs e)
+    {
+        Debug.Log("OpWebSocketOpen");
+
+        Send(new JoinPlayer()
         {
-            var client = clientData.ezClient;
-            var rect = new Rect(offset * 310 + 10, 30, 300, Screen.height - 100);
+            Player = player
+        });
+    }
 
-            GUI.Box(rect, "CLIENT " + offset.ToString());
-            GUILayout.BeginArea(rect);
+    private void Ws_OnError(object sender, ErrorEventArgs e)
+    {
+        Debug.LogError("OnWebSocketError : " + e.Message);
+    }
 
-            GUILayout.Space(30);
+    private void Ws_OnClose(object sender, CloseEventArgs e)
+    {
+        Debug.LogWarning("OnWebSocketClose : " + e.Reason);
+    }
 
-            if (GUILayout.Button("Close"))
+    private void Ws_OnMessage(object sender, MessageEventArgs e)
+    {
+        Debug.Log("OnWebSocketMessage : " + e.Data);
+
+        var packet = PacketSerializer.Deserialize(e.RawData);
+
+        lock (packetQ)
+            packetQ.Add(packet);
+    }
+
+    // fixme
+    private void AddTask(Action action)
+    {
+        //lock (tasks)
+        //    tasks.Add(action);
+        action.Invoke();
+    }
+
+    #region PROCESS_PACKET
+    private void ProcessPacket(PacketBase packet)
+    {
+        if (packet is WorldInfo)
+            ProcessWorldInfo((WorldInfo)packet);
+        else if (packet is ModifyPlayerProperty)
+            ProcessModifyPlayerProperty((ModifyPlayerProperty)packet);
+        else if (packet is ModifyWorldProperty)
+            ProcessModifyWorldProperty((ModifyWorldProperty)packet);
+        else if (packet is ModifyOptionalWorldProperty)
+            ProcessModifyOptionalWorldProperty((ModifyOptionalWorldProperty)packet);
+        else if (packet is JoinPlayer)
+            ProcessJoinPlayer((JoinPlayer)packet);
+        else if (packet is LeavePlayer)
+            ProcessLeavePlayer((LeavePlayer)packet);
+        else if (packet is BroadcastPacket)
+            ProcessBroadcastPacket((BroadcastPacket)packet);
+
+        else if (packet is OptionalWorldProperty)
+            ProcessOptionalWorldProperty((OptionalWorldProperty)packet);
+    }
+    private void ProcessWorldInfo(WorldInfo packet)
+    {
+        players = new List<EzPlayer>(packet.OtherPlayers);
+        players.Add(player);
+        player = packet.Player;
+        worldProperty = packet.Property;
+
+        if (onWorldInfo != null)
+            AddTask(() => onWorldInfo.Invoke(packet));
+    }
+    private void ProcessModifyPlayerProperty(ModifyPlayerProperty packet)
+    {
+        EzPlayer player = null;
+        lock (players)
+            player = players.Find(x => x.PlayerId == packet.Player.PlayerId);
+
+        foreach (var pair in packet.Property)
+            player.Property[pair.Key] = pair.Value;
+
+        if (onModifyPlayerProperty != null)
+            AddTask(() => onModifyPlayerProperty.Invoke(packet));
+    }
+    private void ProcessModifyWorldProperty(ModifyWorldProperty packet)
+    {
+        foreach (var pair in packet.Property)
+            worldProperty[pair.Key] = pair.Value;
+
+        if (onModifyWorldProperty != null)
+            AddTask(() => onModifyWorldProperty.Invoke(packet));
+    }
+    private void ProcessModifyOptionalWorldProperty(ModifyOptionalWorldProperty packet)
+    {
+        foreach (var pair in packet.Property)
+            optionalWorldProperty[pair.Key] = pair.Value;
+
+        if (onModifyOptionalWorldProperty != null)
+            AddTask(() => onModifyOptionalWorldProperty.Invoke(packet));
+    }
+    private void ProcessJoinPlayer(JoinPlayer packet)
+    {
+        lock (players)
+            players.Add(packet.Player);
+
+        if (onJoinPlayer != null)
+            AddTask(() => onJoinPlayer.Invoke(packet));
+    }
+    private void ProcessLeavePlayer(LeavePlayer packet)
+    {
+        lock (players)
+            players.Remove(packet.Player);
+
+        if (onLeavePlayer != null)
+            AddTask(() => onLeavePlayer.Invoke(packet));
+    }
+    private void ProcessBroadcastPacket(BroadcastPacket packet)
+    {
+        if (onCustomPacket != null)
+            AddTask(() => onCustomPacket.Invoke(packet));
+    }
+    private void ProcessOptionalWorldProperty(OptionalWorldProperty packet)
+    {
+        lock (responseCallbacks)
+        {
+            if (responseCallbacks.ContainsKey(packet.PacketId) == false)
             {
-                client.Disconnect();
-                clients.Remove(clientData);
+                Debug.LogWarning("UnknownPacket : " + packet.PacketId);
+                return;
             }
 
-            GUILayout.Label("MyNickname : " + client.player.PlayerId);
-            GUILayout.Label("Players : " + string.Join(", ", client.players.Select(x => (string)x.PlayerId).ToArray()));
-            GUILayout.Label("WorldProperty : " + Newtonsoft.Json.JsonConvert.SerializeObject(client.worldProperty));
-            GUILayout.Label("OptProperty : " + Newtonsoft.Json.JsonConvert.SerializeObject(client.optionalWorldProperty));
-
-            GUILayout.BeginHorizontal();
-            clientData.chatMessage = GUILayout.TextField(clientData.chatMessage);
-            if (GUILayout.Button("SendChat", GUILayout.Width(150)))
-            {
-                client.SendPacket(PacketType.Chat, new Dictionary<string, object>()
-                {
-                    {"message", clientData.chatMessage}
-                });
-                clientData.chatMessage = "";
-            }
-            GUILayout.EndHorizontal();
-
-            //
-            GUILayout.BeginHorizontal();
-            clientData.playerPropertyKey = GUILayout.TextField(clientData.playerPropertyKey);
-            clientData.playerPropertyValue = GUILayout.TextField(clientData.playerPropertyValue);
-            if (GUILayout.Button("SetPlayerProp", GUILayout.Width(150)))
-            {
-                client.SetPlayerProperty(clientData.playerPropertyKey, clientData.playerPropertyValue);
-            }
-            GUILayout.EndHorizontal();
-
-            //
-            GUILayout.BeginHorizontal();
-            clientData.worldPropertyKey = GUILayout.TextField(clientData.worldPropertyKey);
-            clientData.worldPropertyValue = GUILayout.TextField(clientData.worldPropertyValue);
-            if (GUILayout.Button("SetWorldProp", GUILayout.Width(150)))
-            {
-                client.SetWorldProperty(clientData.worldPropertyKey, clientData.worldPropertyValue);
-            }
-            GUILayout.EndHorizontal();
-
-            //
-            GUILayout.BeginHorizontal();
-            clientData.optionalWorldPropertyKey = GUILayout.TextField(clientData.optionalWorldPropertyKey);
-            clientData.optionalWorldPropertyValue = GUILayout.TextField(clientData.optionalWorldPropertyValue);
-            if (GUILayout.Button("SetOptProp", GUILayout.Width(150)))
-            {
-                client.SetOptionalWorldProperty(clientData.optionalWorldPropertyKey, clientData.optionalWorldPropertyValue);
-            }
-            GUILayout.EndHorizontal();
-
-            // 
-            GUILayout.BeginHorizontal();
-            clientData.requestOptionalWorldPropertyKey = GUILayout.TextField(clientData.requestOptionalWorldPropertyKey);
-            if (GUILayout.Button("RequestOptProp", GUILayout.Width(150)))
-            {
-                var _clientData = clientData;
-                client.RequestOptionalWorldProperty(
-                    new string[] { clientData.requestOptionalWorldPropertyKey },
-                    (OptionalWorldProperty packet) =>
-                    {
-                        
-                        _clientData.log += "OptionalWorldProperty : " + Newtonsoft.Json.JsonConvert.SerializeObject(packet.Property) + "\r\n";
-                    });
-            }
-            GUILayout.EndHorizontal();
-
-            GUILayout.FlexibleSpace();
-            GUILayout.TextArea(clientData.log, GUILayout.Height(400));
-
-            GUILayout.EndArea();
-            offset++;
+            responseCallbacks[packet.PacketId].Invoke(packet);
+            responseCallbacks.Remove(packet.PacketId);
         }
+    }
+    #endregion
+
+    private void Send(PacketBase packet)
+    {
+        Debug.Log("Send : " + packet);
+
+        var json = PacketSerializer.Serialize(packet);
+        ws.Send(json);
+    }
+
+    public void SendPacket(int packetType, Dictionary<string, object> data)
+    {
+        Send(new RequestBroadcast()
+        {
+            Type = packetType,
+            Data = data
+        });
+    }
+    public void SetPlayerProperty(Dictionary<string, object> property)
+    {
+        Send(new ModifyPlayerProperty()
+        {
+            Property = property
+        });
+    }
+    public void SetPlayerProperty(string key, object value)
+    {
+        SetPlayerProperty(new Dictionary<string, object>()
+        {
+            {key, value}
+        });
+    }
+    public void SetWorldProperty(Dictionary<string, object> property)
+    {
+        Send(new ModifyWorldProperty()
+        {
+            Property = property
+        });
+    }
+    public void SetWorldProperty(string key, object value)
+    {
+        SetWorldProperty(new Dictionary<string, object>() {
+            {key, value}
+        });
+    }
+
+    public void SetOptionalWorldProperty(Dictionary<string, object> property)
+    {
+        Send(new ModifyOptionalWorldProperty()
+        {
+            Property = property
+        });
+    }
+    public void SetOptionalWorldProperty(string key, object value)
+    {
+        SetOptionalWorldProperty(new Dictionary<string, object>()
+        {
+            {key, value}
+        });
+    }
+    public void RequestOptionalWorldProperty(string[] keys, OptionalWorldPropertyCallback callback)
+    {
+        int packetId = Interlocked.Increment(ref nextPacketId);
+
+        lock (responseCallbacks)
+            responseCallbacks[packetId] = (p) => callback.Invoke((OptionalWorldProperty)p);
+
+        Send(new RequestOptionalWorldProperty()
+        {
+            PacketId = packetId,
+            Keys = keys
+        });
+    }
+    public void RequestOptionalWorldProperty(string key, OptionalWorldPropertyCallback callback)
+    {
+        RequestOptionalWorldProperty(new string[] { key }, callback);
+    }
+
+    /// <summary>
+    /// 연결을 끊는다.
+    /// </summary>
+    public void Disconnect()
+    {
+        if (ws.IsAlive == false)
+            return;
+
+        ws.Close();
+        Destroy(gameObject);
     }
 }
