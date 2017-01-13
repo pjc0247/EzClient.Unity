@@ -280,6 +280,7 @@ public class EzClient : MonoBehaviour
         ws.Send(json);
     }
 
+    #region PUBLIC_API
     public void SendPacket(int packetType, Dictionary<string, object> data)
     {
         Send(new RequestBroadcast()
@@ -290,6 +291,9 @@ public class EzClient : MonoBehaviour
     }
     public void SetPlayerProperty(Dictionary<string, object> property)
     {
+        foreach (var pair in property)
+            player.Property[pair.Key] = pair.Value;
+
         Send(new ModifyPlayerProperty()
         {
             Property = property
@@ -359,4 +363,5 @@ public class EzClient : MonoBehaviour
         ws.Close();
         Destroy(gameObject);
     }
+    #endregion
 }
