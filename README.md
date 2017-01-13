@@ -19,7 +19,7 @@ client = EzClient.Connect(
     "ws://localhost:9916/echo?version=1.0.0&userType=guest&userId=1",
     uniqId,
     new Dictionary<string, object>() {
-        {"nickname", nickname}
+        {"class", "oven-breaker"}
     }),
 ```
 
@@ -29,7 +29,7 @@ __접속중인 플레이어 가져오기__
 ```cs
 foreach(var player in client.players) {
     var playerId = player.PlayerId;
-    var nickname = (string)player.Property["nickname"];
+    var level = (int)player.Property["level"];
 }
 ```
 
@@ -39,14 +39,14 @@ client.onJoinPlayer += (JoinPlayer packet) => {
     var player = packet.Player;
 
     var playerId = player.PlayerId;
-    var nickname = (string)player.Property["nickname"];
+    var level = (int)player.Property[level];
 };
 
 client.onLeavePlayer += (LeavePlayer packet) => {
     var player = packet.Player;
     
     var playerId = player.PlayerId;
-    var nickname = (string)player.Property["nickname"];
+    var level = (int)player.Property[level];
 };
 ```
 
@@ -74,7 +74,7 @@ __수신하기__
 client.onCustomPacket += (BroadcastPacket packet) =>
 {            
     if (packet.Type == PacketType.Chat)
-        log += "[" + packet.Sender.Property["nickname"] + "] " + packet.Data["message"] + "\r\n";
+        log += "[" + packet.Sender.PlayerId + "] " + packet.Data["message"] + "\r\n";
 };
 ```
 
@@ -83,7 +83,7 @@ client.onCustomPacket += (BroadcastPacket packet) =>
 ----
 ```cs
 client.SetPlayerProperty(new Dictionary<string, object>() {
-    {"nickname", "rinirininini"}
+    {"level", 10}
 });
 ```
 * 지정한 KEY는 VALUE로 덮어쓰기 됩니다.
