@@ -215,6 +215,8 @@ public class EzClient : MonoBehaviour
 
         foreach (var pair in packet.Property)
             player.Property[pair.Key] = pair.Value;
+        foreach (var key in packet.RemovedKeys)
+            player.Property.Remove(key);
 
         if (onModifyPlayerProperty != null)
             AddTask(() => onModifyPlayerProperty.Invoke(packet));
@@ -223,6 +225,8 @@ public class EzClient : MonoBehaviour
     {
         foreach (var pair in packet.Property)
             worldProperty[pair.Key] = pair.Value;
+        foreach (var key in packet.RemovedKeys)
+            worldProperty.Remove(key);
 
         if (onModifyWorldProperty != null)
             AddTask(() => onModifyWorldProperty.Invoke(packet));
@@ -231,6 +235,8 @@ public class EzClient : MonoBehaviour
     {
         foreach (var pair in packet.Property)
             optionalWorldProperty[pair.Key] = pair.Value;
+        foreach (var key in packet.RemovedKeys)
+            optionalWorldProperty.Remove(key);
 
         if (onModifyOptionalWorldProperty != null)
             AddTask(() => onModifyOptionalWorldProperty.Invoke(packet));
