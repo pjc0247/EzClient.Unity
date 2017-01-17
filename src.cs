@@ -215,8 +215,11 @@ public class EzClient : MonoBehaviour
 
         foreach (var pair in packet.Property)
             player.Property[pair.Key] = pair.Value;
-        foreach (var key in packet.RemovedKeys)
-            player.Property.Remove(key);
+        if (packet.RemovedKeys != null)
+        {
+            foreach (var key in packet.RemovedKeys)
+                player.Property.Remove(key);
+        }
 
         if (onModifyPlayerProperty != null)
             AddTask(() => onModifyPlayerProperty.Invoke(packet));
@@ -225,8 +228,11 @@ public class EzClient : MonoBehaviour
     {
         foreach (var pair in packet.Property)
             worldProperty[pair.Key] = pair.Value;
-        foreach (var key in packet.RemovedKeys)
-            worldProperty.Remove(key);
+        if (packet.RemovedKeys != null)
+        {
+            foreach (var key in packet.RemovedKeys)
+                worldProperty.Remove(key);
+        }
 
         if (onModifyWorldProperty != null)
             AddTask(() => onModifyWorldProperty.Invoke(packet));
@@ -235,8 +241,11 @@ public class EzClient : MonoBehaviour
     {
         foreach (var pair in packet.Property)
             optionalWorldProperty[pair.Key] = pair.Value;
-        foreach (var key in packet.RemovedKeys)
-            optionalWorldProperty.Remove(key);
+        if (packet.RemovedKeys != null)
+        {
+            foreach (var key in packet.RemovedKeys)
+                optionalWorldProperty.Remove(key);
+        }
 
         if (onModifyOptionalWorldProperty != null)
             AddTask(() => onModifyOptionalWorldProperty.Invoke(packet));
@@ -312,6 +321,22 @@ public class EzClient : MonoBehaviour
             {key, value}
         });
     }
+    public void RemovePlayerProperty(string[] keys)
+    {
+        foreach (var key in keys)
+            player.Property.Remove(key);
+
+        Send(new ModifyPlayerProperty()
+        {
+            Property = new Dictionary<string, object>(),
+            RemovedKeys = keys
+        });
+    }
+    public void RemovePlayerProperty(string key)
+    {
+        RemovePlayerProperty(new string[] { key });
+    }
+
     public void SetWorldProperty(Dictionary<string, object> property)
     {
         Send(new ModifyWorldProperty()
@@ -324,6 +349,18 @@ public class EzClient : MonoBehaviour
         SetWorldProperty(new Dictionary<string, object>() {
             {key, value}
         });
+    }
+    public void RemoveWorldProperty(string[] keys)
+    {
+        Send(new ModifyWorldProperty()
+        {
+            Property = new Dictionary<string, object>(),
+            RemovedKeys = keys
+        });
+    }
+    public void RemoveWorldProperty(string key)
+    {
+        RemoveWorldProperty(new string[] { key });
     }
 
     public void SetOptionalWorldProperty(Dictionary<string, object> property)
