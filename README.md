@@ -2,6 +2,7 @@ EzClient.Unity
 ====
 
 __GSF.Ez__ implementation for Unity.<br>
+[![works badge](https://cdn.rawgit.com/nikku/works-on-my-machine/v0.2.0/badge.svg)](https://github.com/nikku/works-on-my-machine)
 
 ![](test.png)
 
