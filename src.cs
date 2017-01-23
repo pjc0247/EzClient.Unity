@@ -325,6 +325,15 @@ public class EzClient : MonoBehaviour
             Data = data
         });
     }
+    public void SendPacket(string tag, int packetType, Dictionary<string, object> data)
+    {
+        Send(new RequestBroadcast()
+        {
+            Tag = tag,
+            Type = packetType,
+            Data = data
+        });
+    }
     public void SetPlayerProperty(Dictionary<string, object> property)
     {
         foreach (var pair in property)
