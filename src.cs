@@ -65,6 +65,7 @@ public class EzClient : MonoBehaviour
     public Dictionary<string, object> worldProperty;
     public Dictionary<string, object> optionalWorldProperty;
     public string rootPlayerId;
+    public bool isRootPlayer = false;
 
     private List<PacketBase> packetQ;
 
@@ -73,7 +74,8 @@ public class EzClient : MonoBehaviour
 
     private int nextPacketId = 0;
     private Dictionary<long, Action<PacketBase>> responseCallbacks;
-    private bool isRootPlayer = false;
+
+    private bool alreadyDesignated = false;
 
     // jwvg0425
     public static EzClient Instance;
@@ -205,19 +207,20 @@ public class EzClient : MonoBehaviour
     private void ProcessWorldInfo(WorldInfo packet)
     {
         rootPlayerId = packet.RootPlayerId;
+        isRootPlayer = packet.RootPlayerId == packet.Player.PlayerId;
 
         players = new List<EzPlayer>(packet.OtherPlayers);
-        players.Add(player);
         player = packet.Player;
+        players.Add(player);
         worldProperty = packet.Property;
 
         if (onWorldInfo != null)
             AddTask(() => onWorldInfo.Invoke(packet));
         if (onDesignatedRootPlayer != null &&
-            isRootPlayer == false && player.PlayerId == rootPlayerId)
+            alreadyDesignated == false && player.PlayerId == rootPlayerId)
         {
             onDesignatedRootPlayer();
-            isRootPlayer = true;
+            alreadyDesignated = true;
         }
     }
     private void ProcessModifyPlayerProperty(ModifyPlayerProperty packet)
@@ -274,6 +277,7 @@ public class EzClient : MonoBehaviour
     private void ProcessLeavePlayer(LeavePlayer packet)
     {
         rootPlayerId = packet.RootPlayerId;
+        isRootPlayer = packet.RootPlayerId == player.PlayerId;
 
         lock (players)
             players.Remove(packet.Player);
@@ -281,10 +285,10 @@ public class EzClient : MonoBehaviour
         if (onLeavePlayer != null)
             AddTask(() => onLeavePlayer.Invoke(packet));
         if (onDesignatedRootPlayer != null &&
-            isRootPlayer == false && player.PlayerId == rootPlayerId)
+            alreadyDesignated == false && player.PlayerId == rootPlayerId)
         {
             onDesignatedRootPlayer();
-            isRootPlayer = true;
+            alreadyDesignated = true;
         }
     }
     private void ProcessBroadcastPacket(BroadcastPacket packet)
