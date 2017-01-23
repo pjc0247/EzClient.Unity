@@ -39,3 +39,9 @@ client.onCustomPacket += (BroadcastPacket packet) =>
     }
 };
 ```
+
+이 외에 `tag`를 활용 가능한 부분
+----
+* 맵을 `zone`으로 구분하여 주변에만 패킷 보내기
+* 개인간 물물교환
+* 파티 시스템
