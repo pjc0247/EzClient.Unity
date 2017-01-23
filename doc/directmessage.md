@@ -22,9 +22,10 @@ client.SendPacket(
     });
 ```
 
-__Receiver__
+__Receiver__<br>
+자기 플레이어 아이디를 구독함으로써, 누군가가 자기 아이디를 태그로 보낸 메세지를 수신합니다.
 ```cs
-client.SubscribeTag("MY_NICKNAME");
+client.SubscribeTag("MY_PLAYER_ID");
 ```
 ```cs
 client.onCustomPacket += (BroadcastPacket packet) =>
