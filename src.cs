@@ -425,6 +425,29 @@ public class EzClient : MonoBehaviour
         RequestOptionalWorldProperty(new string[] { key }, callback);
     }
 
+    public void SubscribeTag(string[] tags)
+    {
+        Send(new SubscribeTag()
+        {
+            Tags = tags
+        });
+    }
+    public void SubscribeTag(string tag)
+    {
+        SubscribeTag(new string[] { tag });
+    }
+    public void UnsubscribeTag(string[] tags)
+    {
+        Send(new UnsubscribeTag()
+        {
+            Tags = tags
+        });
+    }
+    public void UnsubscribeTag(string tag)
+    {
+        UnsubscribeTag(new string[] { tag });
+    }
+
     /// <summary>
     /// 연결을 끊는다.
     /// </summary>
