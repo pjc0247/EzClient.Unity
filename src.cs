@@ -38,6 +38,8 @@ public class EzClient : MonoBehaviour
     public delegate void ModifyWorldPropertyCallback(ModifyWorldProperty packet);
     public delegate void ModifyOptionalWorldPropertyCallback(ModifyOptionalWorldProperty packet);
 
+    public delegate void ChangeRootPlayerCallback();
+
     public delegate void OptionalWorldPropertyCallback(OptionalWorldProperty packet);
     #endregion
 
@@ -56,11 +58,13 @@ public class EzClient : MonoBehaviour
     public ModifyPlayerPropertyCallback onModifyPlayerProperty;
     public ModifyWorldPropertyCallback onModifyWorldProperty;
     public ModifyOptionalWorldPropertyCallback onModifyOptionalWorldProperty;
+    public ChangeRootPlayerCallback onDesignatedRootPlayer;
 
     public EzPlayer player;
     public List<EzPlayer> players;
     public Dictionary<string, object> worldProperty;
     public Dictionary<string, object> optionalWorldProperty;
+    public string rootPlayerId;
 
     private List<PacketBase> packetQ;
 
@@ -69,6 +73,7 @@ public class EzClient : MonoBehaviour
 
     private int nextPacketId = 0;
     private Dictionary<long, Action<PacketBase>> responseCallbacks;
+    private bool isRootPlayer = false;
 
     // jwvg0425
     public static EzClient Instance;
@@ -199,6 +204,8 @@ public class EzClient : MonoBehaviour
     }
     private void ProcessWorldInfo(WorldInfo packet)
     {
+        rootPlayerId = packet.RootPlayerId;
+
         players = new List<EzPlayer>(packet.OtherPlayers);
         players.Add(player);
         player = packet.Player;
@@ -206,6 +213,12 @@ public class EzClient : MonoBehaviour
 
         if (onWorldInfo != null)
             AddTask(() => onWorldInfo.Invoke(packet));
+        if (onDesignatedRootPlayer != null &&
+            isRootPlayer == false && player.PlayerId == rootPlayerId)
+        {
+            onDesignatedRootPlayer();
+            isRootPlayer = true;
+        }
     }
     private void ProcessModifyPlayerProperty(ModifyPlayerProperty packet)
     {
@@ -260,11 +273,19 @@ public class EzClient : MonoBehaviour
     }
     private void ProcessLeavePlayer(LeavePlayer packet)
     {
+        rootPlayerId = packet.RootPlayerId;
+
         lock (players)
             players.Remove(packet.Player);
 
         if (onLeavePlayer != null)
             AddTask(() => onLeavePlayer.Invoke(packet));
+        if (onDesignatedRootPlayer != null &&
+            isRootPlayer == false && player.PlayerId == rootPlayerId)
+        {
+            onDesignatedRootPlayer();
+            isRootPlayer = true;
+        }
     }
     private void ProcessBroadcastPacket(BroadcastPacket packet)
     {
