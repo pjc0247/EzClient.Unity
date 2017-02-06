@@ -41,6 +41,8 @@ public class EzClient : MonoBehaviour
     public delegate void ChangeRootPlayerCallback();
 
     public delegate void OptionalWorldPropertyCallback(OptionalWorldProperty packet);
+
+    private delegate object GenericFunction(EzPlayer sender, object[] args);
     #endregion
 
     public bool isAlive
@@ -68,6 +70,8 @@ public class EzClient : MonoBehaviour
     public bool isRootPlayer = false;
 
     private List<PacketBase> packetQ;
+
+    private Dictionary<string, GenericFunction> functions;
 
     private string host;
     private WebSocket ws;
@@ -98,6 +102,7 @@ public class EzClient : MonoBehaviour
         PacketSerializer.Protocol = new GSF.Packet.Json.JsonProtocol();
 
         ezclient.host = host;
+        ezclient.functions = new Dictionary<string, GenericFunction>();
         ezclient.worldProperty = new Dictionary<string, object>();
         ezclient.optionalWorldProperty = new Dictionary<string, object>();
         ezclient.player = new EzPlayer()
@@ -203,6 +208,11 @@ public class EzClient : MonoBehaviour
 
         else if (packet is OptionalWorldProperty)
             ProcessOptionalWorldProperty((OptionalWorldProperty)packet);
+
+        else if (packet is RequestRemoteCall)
+            ProcessRequestRemoteCall((RequestRemoteCall)packet);
+        else if (packet is RespondRemoteCall)
+            ProcessRespondRemoteCall((RespondRemoteCall)packet);
     }
     private void ProcessWorldInfo(WorldInfo packet)
     {
@@ -297,6 +307,54 @@ public class EzClient : MonoBehaviour
             AddTask(() => onCustomPacket.Invoke(packet));
     }
     private void ProcessOptionalWorldProperty(OptionalWorldProperty packet)
+    {
+        lock (responseCallbacks)
+        {
+            if (responseCallbacks.ContainsKey(packet.PacketId) == false)
+            {
+                Debug.LogWarning("UnknownPacket : " + packet.PacketId);
+                return;
+            }
+
+            responseCallbacks[packet.PacketId].Invoke(packet);
+            responseCallbacks.Remove(packet.PacketId);
+        }
+    }
+
+    private void ProcessRequestRemoteCall(RequestRemoteCall packet)
+    {
+        lock (responseCallbacks)
+        {
+            var response = new RespondRemoteCall();
+            response.PacketId = packet.PacketId;
+            response.RespondTo = packet.Player;
+
+            if (functions.ContainsKey(packet.FunctionName) == false)
+            {
+                Debug.LogError("Got RPCCall but there's no function : " + packet.FunctionName);
+
+                response.Exception = new NotImplementedException(packet.FunctionName);
+                response.IsSuccess = false;
+            }
+            else
+            {
+                try
+                {
+                    var ret = functions[packet.FunctionName].Invoke(packet.Player, packet.Args);
+                    response.Result = ret;
+                    response.IsSuccess = true;
+                }
+                catch (Exception e)
+                {
+                    response.Exception = e;
+                    response.IsSuccess = false;
+                }
+
+                Send(response);
+            }
+        }
+    }
+    private void ProcessRespondRemoteCall(RespondRemoteCall packet)
     {
         lock (responseCallbacks)
         {
@@ -450,6 +508,127 @@ public class EzClient : MonoBehaviour
     public void UnsubscribeTag(string tag)
     {
         UnsubscribeTag(new string[] { tag });
+    }
+
+    public void RegisterFunction<T1, RET>(string name, Func<EzPlayer, T1, RET> function)
+    {
+        functions[name] = (sender, args) =>
+        {
+            return function(sender, (T1)args[0]);
+        };
+    }
+    public void RegisterFunction<T1, T2, RET>(string name, Func<EzPlayer, T1, T2, RET> function)
+    {
+        functions[name] = (sender, args) =>
+        {
+            return function(sender, (T1)args[0], (T2)args[1]);
+        };
+    }
+    public void RegisterFunction<T1, T2, T3, RET>(string name, Func<EzPlayer, T1, T2, T3, RET> function)
+    {
+        functions[name] = (sender, args) =>
+        {
+            return function(sender, (T1)args[0], (T2)args[1], (T3)args[2]);
+        };
+    }
+    public void UnregisterFunction(string name)
+    {
+        functions.Remove(name);
+    }
+
+    public void RemoteCall(EzPlayer player, string functionName, object[] args, Action<RespondRemoteCall> callback)
+    {
+        int packetId = Interlocked.Increment(ref nextPacketId);
+
+        lock (responseCallbacks)
+            responseCallbacks[packetId] = (p) => callback.Invoke((RespondRemoteCall)p);
+
+        Send(new RequestRemoteCall()
+        {
+            PacketId = packetId,
+            Player = new EzPlayer()
+            {
+                PlayerId = player.PlayerId
+            },
+            FunctionName = functionName,
+            Args = args
+        });
+    }
+    public void RemoteCall<T1>(EzPlayer player, string functionName, T1 a, Action<RespondRemoteCall> callback)
+    {
+        RemoteCall(player, functionName, new object[] { a }, callback);
+    }
+    public void RemoteCall<T1, T2>(EzPlayer player, string functionName, T1 a, T2 b, Action<RespondRemoteCall> callback)
+    {
+        RemoteCall(player, functionName, new object[] { a, b }, callback);
+    }
+    public void RemoteCall<T1, T2, T3>(EzPlayer player, string functionName, T1 a, T2 b, T3 c, Action<RespondRemoteCall> callback)
+    {
+        RemoteCall(player, functionName, new object[] { a, b, c }, callback);
+    }
+    public void RemoteCall(EzPlayer player, string functionName, object[] args)
+	{
+        RemoteCall(player, functionName, args, _ => { });
+	}
+    public void RemoteCall<T1>(EzPlayer player, string functionName, T1 a)
+    {
+        RemoteCall(player, functionName, new object[] { a });
+    }
+    public void RemoteCall<T1, T2>(EzPlayer player, string functionName, T1 a, T2 b)
+    {
+        RemoteCall(player, functionName, new object[] { a, b });
+    }
+    public void RemoteCall<T1, T2, T3>(EzPlayer player, string functionName, T1 a, T2 b, T3 c)
+    {
+        RemoteCall(player, functionName, new object[] { a, b, c });
+    }
+    public void RemoteCallToRootPlayer(string functionName, object[] args, Action<RespondRemoteCall> callback)
+    {
+        // TODO : 발신자가 Root이면?
+
+        int packetId = Interlocked.Increment(ref nextPacketId);
+
+        lock (responseCallbacks)
+            responseCallbacks[packetId] = (p) => callback.Invoke((RespondRemoteCall)p);
+
+        Send(new RequestRemoteCall()
+        {
+            PacketId = packetId,
+            Player = new EzPlayer()
+            {
+                PlayerId = rootPlayerId 
+            },
+            FunctionName = functionName,
+            Args = args
+        });
+    }
+    public void RemoteCallToRootPlayer<T1>(string functionName, T1 a, Action<RespondRemoteCall> callback)
+    {
+        RemoteCallToRootPlayer(functionName, new object[] { a }, callback);
+    }
+    public void RemoteCallToRootPlayer<T1, T2>(string functionName, T1 a, T2 b, Action<RespondRemoteCall> callback)
+    {
+        RemoteCallToRootPlayer(functionName, new object[] { a, b }, callback);
+    }
+    public void RemoteCallToRootPlayer<T1, T2, T3>(string functionName, T1 a, T2 b, T3 c, Action<RespondRemoteCall> callback)
+    {
+        RemoteCallToRootPlayer(functionName, new object[] { a, b, c }, callback);
+    }
+    public void RemoteCallToRootPlayer(string functionName, object[] args)
+    {
+        RemoteCallToRootPlayer(functionName, args, _ => { });
+    }
+    public void RemoteCallToRootPlayer<T1>(string functionName, T1 a)
+    {
+        RemoteCallToRootPlayer(functionName, new object[] { a });
+    }
+    public void RemoteCallToRootPlayer<T1, T2, T3>(string functionName, T1 a, T2 b)
+    {
+        RemoteCallToRootPlayer(functionName, new object[] { a, b });
+    }
+    public void RemoteCallToRootPlayer<T1, T2, T3>(string functionName, T1 a, T2 b, T3 c)
+    {
+        RemoteCallToRootPlayer(functionName, new object[] { a, b, c });
     }
 
     /// <summary>
