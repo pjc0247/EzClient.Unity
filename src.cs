@@ -253,16 +253,19 @@ public class EzClient : MonoBehaviour
     }
     private void ProcessModifyPlayerProperty(ModifyPlayerProperty packet)
     {
-        EzPlayer player = null;
+        if (packet.Player.PlayerId == player.PlayerId)
+            return;
+
+        EzPlayer targetPlayer = null;
         lock (players)
-            player = players.Find(x => x.PlayerId == packet.Player.PlayerId);
+            targetPlayer = players.Find(x => x.PlayerId == packet.Player.PlayerId);
 
         foreach (var pair in packet.Property)
-            player.Property[pair.Key] = pair.Value;
+            targetPlayer.Property[pair.Key] = pair.Value;
         if (packet.RemovedKeys != null)
         {
             foreach (var key in packet.RemovedKeys)
-                player.Property.Remove(key);
+                targetPlayer.Property.Remove(key);
         }
 
         if (onModifyPlayerProperty != null)
