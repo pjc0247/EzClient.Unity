@@ -375,7 +375,7 @@ public class EzClient : MonoBehaviour
         Debug.Log("Send : " + packet);
 
         var json = PacketSerializer.Serialize(packet);
-        ws.Send(json);
+        ws.SendAsync(json, x => { });
     }
 
     #region PUBLIC_API
@@ -510,6 +510,21 @@ public class EzClient : MonoBehaviour
         UnsubscribeTag(new string[] { tag });
     }
 
+    public void RegisterFunction(string name, Action<EzPlayer> function)
+    {
+        functions[name] = (sender, args) =>
+        {
+            function(sender);
+            return null;
+        };
+    }
+    public void RegisterFunction<RET>(string name, Func<EzPlayer, RET> function)
+    {
+        functions[name] = (sender, args) =>
+        {
+            return function(sender);
+        };
+    }
     public void RegisterFunction<T1, RET>(string name, Func<EzPlayer, T1, RET> function)
     {
         functions[name] = (sender, args) =>
@@ -553,6 +568,10 @@ public class EzClient : MonoBehaviour
             FunctionName = functionName,
             Args = args
         });
+    }
+    public void RemoteCall(EzPlayer player, string functionName, Action<RespondRemoteCall> callback)
+    {
+        RemoteCall(player, functionName, new object[] { }, callback);
     }
     public void RemoteCall<T1>(EzPlayer player, string functionName, T1 a, Action<RespondRemoteCall> callback)
     {
@@ -601,6 +620,10 @@ public class EzClient : MonoBehaviour
             FunctionName = functionName,
             Args = args
         });
+    }
+    public void RemoteCallToRootPlayer<T1>(string functionName, Action<RespondRemoteCall> callback)
+    {
+        RemoteCallToRootPlayer(functionName, new object[] { }, callback);
     }
     public void RemoteCallToRootPlayer<T1>(string functionName, T1 a, Action<RespondRemoteCall> callback)
     {
