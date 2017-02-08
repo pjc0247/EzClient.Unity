@@ -12,12 +12,28 @@ using GSF.Ez.Packet;
 
 using Newtonsoft.Json;
 
+
+/// <summary>
+/// Provides serialization/deserialization methods between UserObject and EzObject(json).
+/// </summary>
 public static class EzSerializer
 {
+    /// <summary>
+    /// Converts UserObject to EzObject.
+    /// </summary>
+    /// <param name="obj">object to convert</param>
+    /// <returns>EzObject (json)</returns>
     public static string ToEzObject(this object obj)
     {
         return JsonConvert.SerializeObject(obj);
     }
+
+    /// <summary>
+    /// Converts EzObject to UserObject
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="json">EzObject json</param>
+    /// <returns>UserObject</returns>
     public static T ToGameObject<T>(this object json)
     {
         if (!(json is string))
@@ -132,6 +148,7 @@ public class EzClient : MonoBehaviour
 
         ws.Connect();
     }
+
     void Update()
     {
         List<PacketBase> qCopy = null;
@@ -154,6 +171,7 @@ public class EzClient : MonoBehaviour
     {
         Debug.Log("OpWebSocketOpen");
 
+        // Handshake
         Send(new JoinPlayer()
         {
             Player = player
@@ -551,6 +569,7 @@ public class EzClient : MonoBehaviour
         functions.Remove(name);
     }
 
+    #region RPC_TO_PLAYER
     public void RemoteCall(EzPlayer player, string functionName, object[] args, Action<RespondRemoteCall> callback)
     {
         int packetId = Interlocked.Increment(ref nextPacketId);
@@ -601,6 +620,9 @@ public class EzClient : MonoBehaviour
     {
         RemoteCall(player, functionName, new object[] { a, b, c });
     }
+    #endregion
+
+    #region RPC_TO_ROOT_PLAYER
     public void RemoteCallToRootPlayer(string functionName, object[] args, Action<RespondRemoteCall> callback)
     {
         // TODO : 발신자가 Root이면?
@@ -653,6 +675,7 @@ public class EzClient : MonoBehaviour
     {
         RemoteCallToRootPlayer(functionName, new object[] { a, b, c });
     }
+    #endregion
 
     /// <summary>
     /// 연결을 끊는다.
