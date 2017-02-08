@@ -48,3 +48,8 @@ client.RemoteCall(targetPlayer, "Sum", 5, 5,
     }
   });
 ```
+
+__request to root player__
+```cs
+client.RemoteCallToRootPlayer("Sum", 5, 5);
+```
