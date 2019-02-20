@@ -10,7 +10,7 @@ __GSF.Ez__ implementation for Unity.<br>
 
 
 
-서버에 연결하기
+Connect to Server
 ----
 ```cs
 // 클라이언트 식별값
@@ -25,9 +25,9 @@ client = EzClient.Connect(
     }),
 ```
 
-플레이어 관리
+Players
 ----
-__접속중인 플레이어 가져오기__
+__GetAllPlayers__
 ```cs
 foreach(var player in client.players) {
     var playerId = player.PlayerId;
@@ -35,7 +35,7 @@ foreach(var player in client.players) {
 }
 ```
 
-__새로운 접속, 퇴장 처리하기__
+__Join/Leave Events__
 ```cs
 client.onJoinPlayer += (JoinPlayer packet) => {
     var player = packet.Player;
@@ -52,16 +52,16 @@ client.onLeavePlayer += (LeavePlayer packet) => {
 };
 ```
 
-패킷 주고받기
+Communication
 ----
-__패킷 아이디 정의하기__
+__Declaring Packet__
 ```cs
 public class PacketType {
     public static readonly int Chat = 1;
 }
 ```
 
-__패킷 브로드캐스팅__
+__Broadcasting__
 ```cs
 client.SendPacket(
     PacketType.Chat,
@@ -71,7 +71,7 @@ client.SendPacket(
     });
 ```
 
-__수신하기__
+__Subscribing__
 ```cs
 client.onCustomPacket += (BroadcastPacket packet) =>
 {            
@@ -81,7 +81,7 @@ client.onCustomPacket += (BroadcastPacket packet) =>
 ```
 
 
-내 정보 수정하기
+Player Property
 ----
 ```cs
 client.SetPlayerProperty(new Dictionary<string, object>() {
@@ -92,16 +92,16 @@ client.SetPlayerProperty(new Dictionary<string, object>() {
 * 지정하지 않은 KEY는 변동 사항이 없습니다.
 
 
-월드 데이터
+World Property
 ----
 월드 데이터는 서버 인스턴스 전체에 공유되는 데이터입니다.<br>
 
-__월드 데이터에 접근하기__
+__GetWorldProperty__
 ```cs
 var mapId = (int)client.worldProperty["map_id"];
 ```
 
-__월드 데이터 수정하기__
+__SetWorldProperty__
 ```cs
 client.SetWorldProperty(new Dictionary<string, object>() {
     {"map_id", 11}
@@ -109,3 +109,8 @@ client.SetWorldProperty(new Dictionary<string, object>() {
 ```
 * 지정한 KEY는 VALUE로 덮어쓰기 됩니다.
 * 지정하지 않은 KEY는 변동 사항이 없습니다.
+
+
+RPC
+----
+
